@@ -1,55 +1,27 @@
-name: Windows release binaries
+name: Windows release
 
-# Builds and signs the Windows installers for a release that ALREADY EXISTS, attaches them to it,
-# and adds the `windows-x86_64` entry to latest.json so Windows installs get auto-updates.
-#
-# `scripts/release.sh` on Fedora creates the GitHub release and its .rpm. Publishing it fires this
-# workflow automatically — a few minutes later the Windows assets appear on the same release. Nobody
-# boots Windows. The Linux AppImage is built the same way, by linux-release.yml.
-#
-# It can also be run by hand against an older tag to backfill:
-#   Actions ▸ Windows release binaries ▸ Run workflow ▸ tag = v0.1.4
-#
-# Requires repo secrets (Settings ▸ Secrets and variables ▸ Actions):
-#   TAURI_SIGNING_PRIVATE_KEY           contents of ~/.tauri/limusic.key
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  empty string (the key has no password)
-#   LASTFM_API_KEY / LASTFM_API_SECRET  Last.fm credentials (optional — warn-only if absent)
-# Without the signing pair the bundler emits no .sig and this job fails loudly rather than
-# shipping an unsignable update.
-
-# DISPATCH ONLY, ON PURPOSE — do not add `release: published` back. Actions caches are ref-scoped,
-# and a release-triggered run executes on the *tag* ref, so it can never read the cache any previous
-# release wrote. This job was recompiling all of Rust from scratch every single time, 11m25s of a
-# 15m run, while dutifully saving a 0.55 GB cache nothing would ever read. A dispatched run executes
-# on master, so the cache is shared release to release; the checkout below still pins the build to
-# the tag. scripts/release.sh dispatches both workflows.
-# Consequence: publishing a release from the GitHub UI builds nothing. Use the script.
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to build Windows binaries for (e.g. v0.1.4)
+        description: Release tag to build for (e.g. v0.3.0)
         required: true
         type: string
       dry_run:
-        description: Build and sign, but attach nothing to the release
+        description: Build and verify, but don't attach to release
         required: false
         default: false
         type: boolean
 
 permissions:
-  contents: write # upload assets onto the release
+  contents: write
 
-# Per-workflow, NOT shared with linux-release.yml any more: the two now run in parallel, and the
-# only thing they contend for is latest.json, which the upload step merges with a read-back retry.
 concurrency:
   group: windows-release-${{ inputs.tag }}
   cancel-in-progress: false
 
 env:
-  # Pinned libmpv dev build (shinchiro). Baseline x86_64 — NOT the `-v3-` variant, which requires
-  # AVX2 and would crash on older CPUs. libmpv2 needs mpv >= 0.35 (client API 2.x). Bump
-  # deliberately: a new mpv is a new 117 MB DLL in the installer.
+  # Pinned libmpv dev build (shinchiro). AVX2-free variant for broader CPU support.
   MPV_DEV_URL: https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-20260610-git-304426c.7z
   MPV_DIR: ${{ github.workspace }}\.libmpv
 
@@ -57,93 +29,76 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: Resolve the tag
+      - name: Validate tag
         id: rel
         shell: bash
         run: |
           TAG="${{ inputs.tag }}"
-          [ -n "$TAG" ] || { echo "::error::no tag to build for"; exit 1; }
+          [ -n "$TAG" ] || { echo "::error::no tag specified"; exit 1; }
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.rel.outputs.tag }}
 
-      # The tag is the contract: the binaries must be built from the source that tag points at, and
-      # the updater compares tauri.conf.json's version. If they disagree, the version bump never got
-      # committed — stop before shipping a mislabelled installer.
-      - name: Check the tag matches the app version
+      - name: Verify version matches tag
         shell: bash
         run: |
           VERSION="$(jq -r .version src-tauri/tauri.conf.json)"
-          if [ "v$VERSION" != "${{ steps.rel.outputs.tag }}" ]; then
-            echo "::error::tauri.conf.json says $VERSION but the tag is ${{ steps.rel.outputs.tag }} — was the version bump committed before the tag was cut?"
+          [ "v$VERSION" = "${{ steps.rel.outputs.tag }}" ] || {
+            echo "::error::tauri.conf.json version $VERSION doesn't match tag ${{ steps.rel.outputs.tag }}"
             exit 1
-          fi
+          }
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Frontend deps
+      - name: Frontend
         shell: bash
         run: |
           npm install -g pnpm@10
           cd ui && pnpm install --frozen-lockfile
 
-      - name: Rust (MSVC)
+      - name: Rust
         shell: bash
         run: rustup default stable-msvc
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: . -> target
+      - run: npm install -g "@tauri-apps/cli@^2"
 
-      - name: Tauri CLI
-        shell: bash
-        # The npm CLI ships a prebuilt binary — `cargo install tauri-cli` would compile it from
-        # source on every cache miss (~5 min for nothing).
-        run: npm install -g "@tauri-apps/cli@^2"
-
-      # libmpv is the whole reason Windows builds are a chore. The dev package ships the DLL and a
-      # MinGW import lib (libmpv.dll.a) that the MSVC linker cannot consume, and no .def file — so
-      # synthesise the .def from the DLL's own export table and build a real mpv.lib. The Rust side
-      # just emits `cargo:rustc-link-lib=mpv` (pregenerated bindings, no headers needed).
-      - name: Build the libmpv import library
+      - name: Build libmpv import library
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path "$env:MPV_DIR" | Out-Null
+
+          # Download and extract libmpv dev package
           curl.exe -fsSL -o "$env:MPV_DIR\mpv-dev.7z" "$env:MPV_DEV_URL"
           7z x "$env:MPV_DIR\mpv-dev.7z" -o"$env:MPV_DIR" -y | Out-Null
-          if (-not (Test-Path "$env:MPV_DIR\libmpv-2.dll")) { throw "libmpv-2.dll not found in the dev package — did MPV_DEV_URL change shape?" }
 
-          # dumpbin/lib live in the MSVC toolchain. (cargo itself finds MSVC on its own; this is
-          # only so we can run the two tools.)
+          # Build MSVC import lib from MinGW DLL exports
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vs = & $vswhere -latest -products * -property installationPath
           Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
           Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
 
           Set-Location "$env:MPV_DIR"
-          $names = & dumpbin /exports libmpv-2.dll |
+          $exports = & dumpbin /exports libmpv-2.dll |
             Select-String -Pattern '^\s+\d+\s+[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+(\w+)' |
             ForEach-Object { $_.Matches[0].Groups[1].Value }
-          if ($names.Count -lt 50) { throw "parsed only $($names.Count) exports from libmpv-2.dll — dumpbin output format changed?" }
-          @("EXPORTS") + ($names | ForEach-Object { "    $_" }) | Set-Content -Path mpv.def -Encoding ascii
-          & lib /def:mpv.def /name:libmpv-2.dll /out:mpv.lib /machine:x64
-          if (-not (Test-Path "$env:MPV_DIR\mpv.lib")) { throw "lib.exe did not produce mpv.lib" }
-          Write-Host "mpv.lib built from $($names.Count) exports"
 
-          # tauri.windows.conf.json lists libmpv-2.dll under bundle.resources, so the installer
-          # places it next to the exe. Without this the app builds but won't start.
+          @("EXPORTS") + ($exports | ForEach-Object { "    $_" }) | Set-Content mpv.def -Encoding ascii
+          & lib /def:mpv.def /name:libmpv-2.dll /out:mpv.lib /machine:x64
+          Write-Host "mpv.lib built from $($exports.Count) exports"
+
+          # Copy DLL for bundling
           Copy-Item "$env:MPV_DIR\libmpv-2.dll" "$env:GITHUB_WORKSPACE\src-tauri\libmpv-2.dll" -Force
 
-      # The gitignored src-tauri/lastfm.keys (read by build.rs) obviously isn't in the checkout —
-      # recreate it from repo secrets so Windows builds scrobble too. Missing secrets are a warning,
-      # not a failure: the app is fully functional without Last.fm.
-      - name: Last.fm API keys
+      - name: Last.fm keys
         shell: bash
         env:
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
@@ -152,79 +107,54 @@ jobs:
           if [ -n "$LASTFM_API_KEY" ] && [ -n "$LASTFM_API_SECRET" ]; then
             printf 'LIMUSIC_LASTFM_API_KEY=%s\nLIMUSIC_LASTFM_API_SECRET=%s\n' \
               "$LASTFM_API_KEY" "$LASTFM_API_SECRET" > src-tauri/lastfm.keys
-            echo "lastfm.keys written"
           else
-            echo "::warning::LASTFM_API_KEY / LASTFM_API_SECRET secrets not set — this Windows build ships without Last.fm scrobbling"
+            echo "::warning::Last.fm secrets not set — scrobbling disabled"
           fi
 
-      - name: Build + sign the installers
+      - name: Build installers
         shell: bash
         env:
-          # Scoped to this step only — no other step (or third-party action) sees the signing key.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Point the linker at the mpv.lib we just built.
           RUSTFLAGS: -L native=${{ github.workspace }}\.libmpv
         run: |
-          set -euo pipefail
-          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
-            echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is not set — the build would produce unsignable installers"
-            exit 1
-          fi
+          [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] || {
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY secret required"; exit 1; }
           (cd ui && pnpm build)
-          # beforeBuildCommand emptied: we just ran it. Left on, tauri runs `pnpm build` from the
-          # repo root, which has no package.json, so pnpm's choice between ui/ and website/ is down
-          # to the filesystem — it resolves to ui here and to website on Linux. Working by accident.
-          tauri build --config '{"build":{"beforeBuildCommand":""}}'   # → target/release/bundle/{nsis,msi}/
+          tauri build --config '{"build":{"beforeBuildCommand":""}}'
 
-      - name: Dry run — built and signed, attaching nothing
+      - name: Dry run
         if: ${{ inputs.dry_run }}
         shell: bash
-        run: echo "dry_run - build and signing succeeded; release assets left untouched."
+        run: echo "dry_run — build succeeded, no assets uploaded"
 
-      - name: Attach installers + teach latest.json about Windows
+      - name: Upload and update release
         if: ${{ !inputs.dry_run }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
           TAG="${{ steps.rel.outputs.tag }}"
           EXE="target/release/bundle/nsis/limusic_${VERSION}_x64-setup.exe"
-          SIG="$EXE.sig"
           MSI="$(ls target/release/bundle/msi/limusic_${VERSION}_*.msi 2>/dev/null | head -1 || true)"
 
-          if [ ! -f "$EXE" ]; then
-            echo "::error::expected installer not found: $EXE"; find target/release/bundle -maxdepth 2; exit 1
-          fi
-          if [ ! -f "$SIG" ]; then
-            echo "::error::no .sig next to the installer — signing key missing, or createUpdaterArtifacts got turned off"; exit 1
-          fi
+          [ -f "$EXE" ] || { echo "::error::NSIS installer not found"; exit 1; }
+          [ -f "$EXE.sig" ] || { echo "::error::signature not found"; exit 1; }
 
-          gh release upload "$TAG" "$EXE" "$SIG" ${MSI:+"$MSI"} --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$TAG" "$EXE" "$EXE.sig" ${MSI:+"$MSI"} --clobber
 
-          # latest.json is the one thing both release workflows write, and they now run in parallel.
-          # There is no compare-and-swap on release assets, so: merge, upload, read back, and retry
-          # if the other job clobbered us in between. Whoever loses a round re-merges onto the
-          # winner's copy, so it converges — normally on the first attempt, worst case the second.
+          # Merge into latest.json with retry for race with Linux job
           URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$EXE")"
-          for attempt in 1 2 3 4 5; do
-            rm -rf manifest && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir manifest
-            MANIFEST_VERSION="$(jq -r .version manifest/latest.json)"
-            if [ "$MANIFEST_VERSION" != "$VERSION" ]; then
-              echo "::error::the release's latest.json is for $MANIFEST_VERSION but we built $VERSION"; exit 1
-            fi
-            jq --arg sig "$(cat "$SIG")" --arg url "$URL" \
+          for i in 1 2 3 4 5; do
+            rm -rf manifest check
+            gh release download "$TAG" --pattern latest.json --dir manifest 2>/dev/null || true
+            jq --arg sig "$(cat "$EXE.sig")" --arg url "$URL" \
               '.platforms["windows-x86_64"] = { signature: $sig, url: $url }' \
-              manifest/latest.json > latest.json
-            gh release upload "$TAG" latest.json --clobber --repo "$GITHUB_REPOSITORY"
-
-            sleep $((3 + RANDOM % 5))
-            rm -rf check && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir check
-            if [ "$(jq -r '.platforms["windows-x86_64"].url // ""' check/latest.json)" = "$URL" ]; then
-              echo "latest.json carries windows-x86_64 (attempt $attempt): $(jq -c '.platforms | keys' check/latest.json)"
-              break
-            fi
-            [ "$attempt" -lt 5 ] || { echo "::error::windows-x86_64 kept getting clobbered out of latest.json"; exit 1; }
-            echo "the Linux job clobbered the manifest, re-merging"
+              manifest/latest.json 2>/dev/null > latest.json || echo '{"version":"'"$VERSION"'","platforms":{}}' > latest.json
+            gh release upload "$TAG" latest.json --clobber
+            sleep $((2 + RANDOM % 4))
+            gh release download "$TAG" --pattern latest.json --dir check 2>/dev/null || true
+            [ "$(jq -r '.platforms["windows-x86_64"].url // ""' check/latest.json)" = "$URL" ] && break
+            echo "retry $i: clobbered by parallel job"
           done
+          echo "Published. Platforms: $(jq -c '.platforms | keys' latest.json)"

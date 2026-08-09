@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    paths-ignore: ['website/**', 'docs/**', '*.md']
+  pull_request:
+    paths-ignore: ['website/**', 'docs/**', '*.md']
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nushell
+        run: |
+          mkdir -p ~/.local/bin
+          curl -fsSL https://github.com/nushell/nushell/releases/latest/download/nux-x86_64-unknown-linux-musl.tar.gz | tar xz -C ~/.local/bin nu
+
+      - name: Rustfmt
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+          - os: windows-latest
+            target: windows
+          - os: macos-latest
+            target: mac
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        run: npm install -g pnpm@10
+
+      - name: Frontend deps
+        run: cd ui && pnpm install --frozen-lockfile
+
+      - name: Rust
+        if: matrix.target != 'windows'
+        run: rustup default stable
+
+      - name: Rust (MSVC)
+        if: matrix.target == 'windows'
+        run: rustup default stable-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Tauri CLI
+        run: npm install -g "@tauri-apps/cli@^2"
+
+      - name: Build
+        run: |
+          cd ui && pnpm build
+          cd ..
+          case "${{ matrix.target }}" in
+            linux)   cargo tauri build --bundles deb ;;
+            windows) cargo tauri build --bundles msi,nsis ;;
+            mac)     cargo tauri build --bundles app ;;
+          esac

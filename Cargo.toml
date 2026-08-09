@@ -32,3 +32,10 @@ listen-protocol = { path = "crates/listen-protocol" }
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+
+# Less optimizations than release but will result in faster compilation time.
+[profile.dev]
+opt-level = 0
+debug = true
+incremental = true
