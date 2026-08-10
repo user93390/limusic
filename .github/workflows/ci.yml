@@ -60,8 +60,17 @@ jobs:
         run: |
           case "${{ matrix.os }}" in
             ubuntu-latest)
-              scripts/install-nu.sh
-              echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+            set -euo pipefail
+        
+            sudo mkdir -p /etc/apt/keyrings
+        
+            curl -fsSL https://apt.fury.io/nushell/gpg.key \
+              | sudo gpg --dearmor -o /etc/apt/keyrings/fury-nushell.gpg
+        
+            echo "deb [signed-by=/etc/apt/keyrings/fury-nushell.gpg] https://apt.fury.io/nushell/ /" \
+              | sudo tee /etc/apt/sources.list.d/fury-nushell.list > /dev/null
+            sudo apt-get install -y nushell
+            
             windows-latest)
               winget install --id Nushell.Nushell --exact --silent --accept-package-agreements --accept-source-agreements ;;
             macos-latest)
