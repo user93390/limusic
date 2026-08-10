@@ -34,10 +34,16 @@ jobs:
         run: |
           sudo dnf install --setopt=install_weak_deps=False -y gcc gcc-c++ pkg-config openssl-devel
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          
+
           source "$HOME/.cargo/env"
           rustup toolchain install stable
           rustup default stable
+
+          {
+            echo "CARGO_HOME=$CARGO_HOME"
+            echo "RUSTUP_HOME=$RUSTUP_HOME"
+            echo "PATH=$CARGO_HOME/bin:$PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: |
