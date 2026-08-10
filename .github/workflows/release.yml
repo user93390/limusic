@@ -35,7 +35,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install tauri-cli
-        run: cargo install tauri-cli
+        run: |
+          sudo dnf install --setopt=install_weak_deps=False -y gcc pkg-config openssl-devel
+          cargo install tauri-cli
 
       - name: Install dependencies
         run: |
