@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: release-${{ inputs.tag }}
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ github.ref_name }}
 
       - name: Install dependencies
         run: |
@@ -55,7 +55,7 @@ jobs:
         run: |
           sudo dnf install -y mingw64-gcc-c++
 
-          nu scripts/build/release.nu ${{ inputs.tag }} --os linux
+          nu scripts/build/release.nu ${{ github.ref_name }} --os linux
 
           cargo tauri build --bundles deb,rpm
 

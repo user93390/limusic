@@ -14,7 +14,13 @@ export def main [tag: string, --os: string = "linux"] {
         error make --unspanned { msg: "no version in tauri.conf.json" }
     }
 
-    if $"v($version)" != $tag {
+    # Strip leading 'v' from tag if present, so both 'v0.3.11' and '0.3.11' work
+    let tag_version = ($tag | str replace --regex "^v" "")
+    if ($tag_version == "") {
+        error make --unspanned { msg: "tag is empty" }
+    }
+
+    if $version != $tag_version {
         error make --unspanned { msg: $"tag ($tag) doesn't match version ($version)" }
     }
 
