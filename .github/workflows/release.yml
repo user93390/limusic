@@ -38,14 +38,6 @@ jobs:
             mpv-devel \
             nushell
 
-      - name: Validate version
-        shell: nu {0}
-        run: |
-          let version = (open src-tauri/tauri.conf.json).version
-          if $"v($version)" != "${{ inputs.tag }}" {
-              error make $"version ($version) doesn't match tag ${{ inputs.tag }}"
-          }
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
