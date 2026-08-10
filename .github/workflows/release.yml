@@ -55,6 +55,12 @@ jobs:
         with:
           node-version: 22
 
+      - name: Setup pnpm
+        run: |
+          pnpm setup
+          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+          echo "PATH=$PNPM_HOME/bin:$PATH" >> "$GITHUB_ENV"
+
       - name: Last.fm keys
         if: ${{ env.LASTFM_API_KEY != '' && env.LASTFM_API_SECRET != '' }}
         run: |
