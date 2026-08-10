@@ -1,0 +1,71 @@
+name: CI release
+
+on:
+  push:
+    branches: [master]
+    paths-ignore: ['website/**', 'docs/**', '*.md']
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: linux-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build_linux:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+      options: --cpus 1
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Install dependencies
+        run: |
+          sudo dnf install -y \
+            webkit2gtk4.1-devel \
+            gtk3-devel \
+            libayatana-appindicator-gtk3-devel \
+            librsvg2-devel \
+            openssl-devel \
+            dbus-devel \
+            mpv-devel \
+            nushell
+          
+      - name: Validate version
+        shell: nu {0}
+        run: |
+          let version = (open src-tauri/tauri.conf.json).version
+          if $"v($version)" != "${{ inputs.tag }}" {
+              error make $"version ($version) doesn't match tag ${{ inputs.tag }}"
+          }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Last.fm keys
+        if: ${{ secrets.LASTFM_API_KEY != '' && secrets.LASTFM_API_SECRET != '' }}
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_API_SECRET: ${{ secrets.LASTFM_API_SECRET }}
+        run: |
+          printf 'LIMUSIC_LASTFM_API_KEY=%s\nLIMUSIC_LASTFM_API_SECRET=%s\n' \
+            "$LASTFM_API_KEY" "$LASTFM_API_SECRET" > src-tauri/lastfm.keys
+
+      - name: build_bin
+        run: |
+          sudo dnf install -y mingw64-gcc-c++
+
+          nu scripts/build/release.nu --tag ${{ inputs.tag }} --os linux
+
+          cargo tauri build --bundles deb,rpm
+
+          rustup target add x86_64-pc-windows-gnu
+          cargo tauri build --target x86_64-pc-windows-gnu --bundles nsis
