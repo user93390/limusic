@@ -1,55 +1,32 @@
-name: CI
+name: Run CI
 
 on:
-  push:
+  pull_request:
     branches: [master]
     paths-ignore: ['website/**', 'docs/**', '*.md']
-  pull_request:
-    paths-ignore: ['website/**', 'docs/**', '*.md']
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  lint:
+  build:
     runs-on: ubuntu-latest
+    container:
+      image: rust:1-alpine3.23-sfw-dev
+      options: --cpus 1
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Check
-        run: cargo check
+      - run: cargo check
+      - run: cargo test
 
-  build-linux:
+  build-ui:
     runs-on: ubuntu-latest
-    container: alpine:latest
+    defaults:
+      run:
+        working-directory: ./ui
+    container:
+      image: node:26-alpine-sfw-ent-dev
+      options: --cpus 1
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Run scripts (Linux)
-        run: |
-            apk add --no-cache nushell
-      - name: Build
-        run: nu scripts/build/ci.nu
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run scripts (Windows)
-        run: winget install --id Nushell.Nushell --exact --silent --accept-package-agreements --accept-source-agreements
-
-      - name: Build
-        run: nu scripts/build/ci.nu
-
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run scripts (Macos)
-        run: brew install nushell
-
-      - name: Build
-        run: nu scripts/build/ci.nu
+      - run: yarn run check

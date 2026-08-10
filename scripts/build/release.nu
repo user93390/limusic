@@ -22,7 +22,7 @@ export def main [tag: string, --os: string = "linux"] {
 
     print "Release env ready. Version: ($version)"
 }
- # Support both direct key (GitHub Actions) and key file (local dev)
+
 def setup_env [] {
     let key_content = if not ($env.TAURI_SIGNING_PRIVATE_KEY? | is-empty) {
         $env.TAURI_SIGNING_PRIVATE_KEY
@@ -40,7 +40,6 @@ def setup_env [] {
 
     let key_password = ($env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD? | default "")
 
-    # Write to .env for cargo to pick up after this script exits
     {
         TAURI_SIGNING_PRIVATE_KEY: $key_content,
         TAURI_SIGNING_PRIVATE_KEY_PASSWORD: $key_password,
