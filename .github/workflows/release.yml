@@ -18,9 +18,8 @@ jobs:
   build_linux:
     runs-on: ubuntu-latest
     container:
-      image: fedora:latest
+      image: fedora:44
       options: --cpus 1
-
       
     env:
       LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
@@ -33,7 +32,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo dnf install -y \
+          sudo dnf install  --setopt=install_weak_deps=False -y \
             webkit2gtk4.1-devel \
             gtk3-devel \
             libayatana-appindicator-gtk3-devel \
