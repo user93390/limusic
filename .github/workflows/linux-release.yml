@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to build the Linux AppImage for (e.g. v0.2.9)
+        description: Release tag (e.g. v0.3.0)
         required: true
         type: string
       dry_run:
@@ -12,7 +12,6 @@ on:
         default: false
         type: boolean
 
-# Pinned to ubuntu-24.04 for glibc 2.39 floor — ubuntu-latest would silently raise it
 permissions:
   contents: write
 
@@ -22,7 +21,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,13 +38,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
-            libssl-dev libdbus-1-dev libmpv-dev patchelf file libjack-jackd2-0 glib-networking
+            libssl-dev libdbus-1-dev libmpv-dev
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Frontend
+      - name: Frontend deps
         run: |
           npm install -g pnpm@10
           cd ui && pnpm install --frozen-lockfile
@@ -55,6 +54,10 @@ jobs:
         with:
           workspaces: . -> target
       - run: npm install -g "@tauri-apps/cli@^2"
+
+      - name: Setup Nushell
+        run: |
+          curl -fsSL https://github.com/nushell/nushell/releases/latest/download/nux-x86_64-unknown-linux-musl.tar.gz | tar xz -C ~/.local/bin nu
 
       - name: Last.fm keys
         run: |
@@ -66,31 +69,18 @@ jobs:
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
           LASTFM_API_SECRET: ${{ secrets.LASTFM_API_SECRET }}
 
-      - name: Build AppImage
+      - name: Build deb/rpm
         if: ${{ !inputs.dry_run }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          NO_STRIP: "true"
-          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
           (cd ui && pnpm build)
-          tauri build --bundles appimage --config '{"build":{"beforeBuildCommand":""}}'
-          scripts/fix-appdir-tls.sh
+          ~/.local/bin/nu scripts/build/release.nu --tag ${{ inputs.tag }} --os linux
 
       - name: Dry run
         if: ${{ inputs.dry_run }}
         run: echo "dry_run — build step skipped"
-
-      - name: Verify on foreign distros
-        if: ${{ !inputs.dry_run }}
-        run: |
-          APPDIR="$PWD/target/release/bundle/appimage/limusic.AppDir"
-          for image in debian:sid archlinux:latest; do
-            echo "── $image"
-            docker run --rm -v "$APPDIR:/app:ro" \
-              -v "$PWD/scripts/appdir-foreign-check.sh:/check.sh:ro" "$image" bash /check.sh
-          done
 
       - name: Upload
         if: ${{ !inputs.dry_run }}
@@ -99,10 +89,12 @@ jobs:
         run: |
           TAG="${{ inputs.tag }}"
           VERSION="$(jq -r .version src-tauri/tauri.conf.json)"
-          APPIMAGE="$(ls target/release/bundle/appimage/limusic_${VERSION}_*.AppImage | head -1)"
 
-          [ -f "$APPIMAGE" ] && [ -f "$APPIMAGE.sig" ] || {
-            echo "::error::AppImage or signature missing"; exit 1; }
+          DEB="$(ls target/release/bundle/deb/*.deb 2>/dev/null | head -1)"
+          RPM="$(ls target/release/bundle/rpm/*.rpm 2>/dev/null | head -1)"
 
-          gh release upload "$TAG" "$APPIMAGE" "$APPIMAGE.sig" --clobber
-          echo "Uploaded: $(basename $APPIMAGE)"
+          [ -f "$DEB" ] || { echo "::error::deb not found"; exit 1; }
+          [ -f "$RPM" ] || { echo "::error::rpm not found"; exit 1; }
+
+          gh release upload "$TAG" "$DEB" "$RPM" --clobber
+          echo "Uploaded: $(basename $DEB) $(basename $RPM)"
