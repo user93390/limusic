@@ -2,8 +2,8 @@ name: Run CI
 
 on:
   pull_request:
-    branches: [master]
-    paths-ignore: ['website/**', 'docs/**', '*.md']
+    branches: [ master ]
+    paths-ignore: [ 'website/**', 'docs/**', '*.md' ]
 
 permissions:
   contents: read

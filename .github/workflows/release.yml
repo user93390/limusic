@@ -2,8 +2,8 @@ name: CI release
 
 on:
   push:
-    branches: [master]
-    paths-ignore: ['website/**', 'docs/**', '*.md']
+    branches: [ master ]
+    paths-ignore: [ 'website/**', 'docs/**', '*.md' ]
 
 permissions:
   contents: read
@@ -37,7 +37,7 @@ jobs:
             dbus-devel \
             mpv-devel \
             nushell
-          
+
       - name: Validate version
         shell: nu {0}
         run: |
