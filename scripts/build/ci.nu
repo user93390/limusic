@@ -12,10 +12,14 @@ def main [] {
         exit 1
     }
 
-    let key = open ($env.HOME | path join ".tauri/limusic.key")
-
     if (check_tauri_faults) {
-        $env.TAURI_SIGNING_PRIVATE_KEY = $key
+        let key = ($env.HOME | path join ".tauri/limusic.key")
+        if not ($key | path exists) {
+            print "signing key not found at ($key)"
+            exit 1
+        }
+        
+        $env.TAURI_SIGNING_PRIVATE_KEY = (open $key)
         $env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ($env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD? | default "")
     }
 
@@ -35,7 +39,7 @@ def main [] {
     }
 }
 
-# Exits if
+# Returns true if signing key is not available via env var
 def check_tauri_faults [] {
     if ($env.TAURI_SIGNING_PRIVATE_KEY? | is-empty) {
         print "Tauri signing key doesn't exist."
