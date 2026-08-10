@@ -20,60 +20,36 @@ jobs:
       - name: Check
         run: cargo check
 
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-
-    runs-on: ${{ matrix.os }}
+  build-linux:
+    runs-on: ubuntu-latest
+    container: alpine:latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Frontend deps
+      - name: Run scripts (Linux)
         run: |
-          npm install -g pnpm@10
-          cd ui && pnpm install --frozen-lockfile
+            apk add --no-cache nushell
+      - name: Build
+        run: nu scripts/build/ci.nu
 
-      - name: Rust
-        if: matrix.os != 'windows-latest'
-        run: rustup default stable
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Rust (MSVC)
-        if: matrix.os == 'windows-latest'
-        run: rustup default stable-msvc
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
-
-      - name: Setup Nushell
-        run: |
-          case "${{ matrix.os }}" in
-            ubuntu-latest)
-              set -euo pipefail
-              sudo mkdir -p /etc/apt/keyrings
-              curl -fsSL https://apt.fury.io/nushell/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/fury-nushell.gpg
-              echo "deb [signed-by=/etc/apt/keyrings/fury-nushell.gpg] https://apt.fury.io/nushell/ /" | sudo tee /etc/apt/sources.list.d/fury-nushell.list > /dev/null
-              sudo apt-get install -y nushell
-              ;;
-            windows-latest)
-              winget install --id Nushell.Nushell --exact --silent --accept-package-agreements --accept-source-agreements
-              ;;
-            macos-latest)
-              brew install nushell
-              ;;
-          esac
+      - name: Run scripts (Windows)
+        run: winget install --id Nushell.Nushell --exact --silent --accept-package-agreements --accept-source-agreements
 
       - name: Build
-        run: |
-          case "${{ matrix.os }}" in
-            ubuntu-latest)  nu scripts/build/ci.nu ;;
-            windows-latest) "$env:LOCALAPPDATA\nushell\nu.exe" scripts/build/ci.nu ;;
-            macos-latest)   nu scripts/build/ci.nu ;;
-          esac
+        run: nu scripts/build/ci.nu
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run scripts (Macos)
+        run: brew install nushell
+
+      - name: Build
+        run: nu scripts/build/ci.nu
