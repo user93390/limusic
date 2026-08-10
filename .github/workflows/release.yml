@@ -7,7 +7,7 @@ on:
     paths-ignore: [ 'website/**', 'docs/**', '*.md' ]
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -63,3 +63,17 @@ jobs:
 
           rustup target add x86_64-pc-windows-gnu
           cargo tauri build --target x86_64-pc-windows-gnu --bundles nsis
+
+      - name: create_release
+        if: ${{ github.ref_type == 'tag' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/limusic
+            src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/*.exe
+            src-tauri/target/x86_64-pc-windows-gnu/release/limusic.exe
