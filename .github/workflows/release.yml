@@ -29,19 +29,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
-          
-      - name: Install Rust
-        run: |
-          sudo dnf install --setopt=install_weak_deps=False -y gcc gcc-c++ pkg-config openssl-devel
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-          source "$HOME/.cargo/env"
-          rustup toolchain install stable
-          rustup default stable
+      - uses: Swatinem/rust-cache@v2
 
-          echo "export CARGO_HOME=$HOME/.cargo" >> "$GITHUB_ENV"
-          echo "export RUSTUP_HOME=$HOME/.rustup" >> "$GITHUB_ENV"
-          echo "export PATH=$HOME/.cargo/bin:\$PATH" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
         run: |
