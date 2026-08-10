@@ -56,11 +56,14 @@ jobs:
         run: |
           case "${{ matrix.os }}" in
             ubuntu-latest)
-              curl -fsSL https://github.com/nushell/nushell/releases/latest/download/nux-x86_64-unknown-linux-musl.tar.gz | tar xz -C ~/.local/bin nu
+              set -euo pipefail
+              sudo mkdir -p /etc/apt/keyrings
+              curl -fsSL https://apt.fury.io/nushell/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/fury-nushell.gpg
+              echo "deb [signed-by=/etc/apt/keyrings/fury-nushell.gpg] https://apt.fury.io/nushell/ /" | sudo tee /etc/apt/sources.list.d/fury-nushell.list > /dev/null
+              sudo apt-get install -y nushell
               ;;
             windows-latest)
-              curl -fsSL https://github.com/nushell/nushell/releases/latest/download/nushell-0.114.1-x86_64-pc-windows-msvc.zip -o nushell.zip
-              7z x nushell.zip -o"$env:LOCALAPPDATA\nushell" -y | Out-Null
+              winget install --id Nushell.Nushell --exact --silent --accept-package-agreements --accept-source-agreements
               ;;
             macos-latest)
               brew install nushell
@@ -70,7 +73,7 @@ jobs:
       - name: Build
         run: |
           case "${{ matrix.os }}" in
-            ubuntu-latest)  ~/.local/bin/nu scripts/build/ci.nu ;;
+            ubuntu-latest)  nu scripts/build/ci.nu ;;
             windows-latest) "$env:LOCALAPPDATA\nushell\nu.exe" scripts/build/ci.nu ;;
             macos-latest)   nu scripts/build/ci.nu ;;
           esac
