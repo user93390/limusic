@@ -186,21 +186,27 @@ jobs:
       - name: Download libmpv-2.dll
         shell: pwsh
         run: |
-          $version = "v0.39.2"
-          $url = "https://github.com/mpv-player/mpv-build/releases/download/$version/mpv-dev-x86_64-windows-msvc.zip"
-          
-          Invoke-WebRequest -Uri $url -OutFile "mpv-dev.zip"
-  
-          Expand-Archive -Path "mpv-dev.zip" -DestinationPath "mpv-extract"
-        
-          Copy-Item -Path "mpv-extract/libmpv-2.dll" -Destination "src-tauri/libmpv-2.dll" -Force
-          
-          Write-Host "Cleaning up temporary files..."
-          Remove-Item "mpv-dev.zip" -Force
+          $rss = "https://sourceforge.net/projects/mpv-player-windows/rss?path=/libmpv"
+          [xml]$xml = Invoke-WebRequest -Uri $rss -UseBasicParsing | Select-Object -ExpandProperty Content
+          $filename = ($xml.rss.channel.item | ForEach-Object {
+            $link = $_."#text"
+            if ($link -match "libmpv/mpv-dev-x86_64-\d{8}-git-[a-f0-9]+\.7z") { $link }
+          } | Select-Object -First 1)
+
+          if (-not $filename) {
+            Write-Error "Could not find libmpv x86_64 archive in SourceForge RSS"
+            exit 1
+          }
+          $url = "https://sourceforge.net/projects/mpv-player-windows/files" + $filename
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile "mpv-dev.7z"
+
+          7z x -y mpv-dev.7z -om pv-extract | Out-Null
+          Copy-Item "mpv-extract/libmpv-2.dll" "src-tauri/libmpv-2.dll" -Force
+
+          Remove-Item "mpv-dev.7z" -Force
           Remove-Item "mpv-extract" -Recurse -Force
-          
-          Write-Host "libmpv-2.dll is ready at src-tauri/libmpv-2.dll"
-          Test-Path "src-tauri/libmpv-2.dll"
+          Write-Host "libmpv-2.dll ready at src-tauri/libmpv-2.dll"
 
       - name: build_bin
         shell: pwsh
