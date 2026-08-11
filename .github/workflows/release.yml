@@ -190,6 +190,24 @@ jobs:
         run: |
           nu scripts/build/ci.nu
 
+      - name: Download libmpv-2.dll
+        shell: pwsh
+        run: |
+          $version = "v0.39.2"
+          $url = "https://github.com/mpv-player/mpv-build/releases/download/$version/mpv-dev-x86_64-windows-msvc.zip"
+          
+          Invoke-WebRequest -Uri $url -OutFile "mpv-dev.zip"
+  
+          Expand-Archive -Path "mpv-dev.zip" -DestinationPath "mpv-extract"
+        
+          Copy-Item -Path "mpv-extract/libmpv-2.dll" -Destination "src-tauri/libmpv-2.dll" -Force
+          
+          Write-Host "Cleaning up temporary files..."
+          Remove-Item "mpv-dev.zip" -Force
+          Remove-Item "mpv-extract" -Recurse -Force
+          
+          Write-Host "libmpv-2.dll is ready at src-tauri/libmpv-2.dll"
+          Test-Path "src-tauri/libmpv-2.dll"
       - name: create_release
         if: ${{ github.ref_type == 'tag' }}
         uses: softprops/action-gh-release@v2
