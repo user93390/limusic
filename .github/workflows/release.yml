@@ -139,7 +139,7 @@ jobs:
           scoop bucket add extras
           scoop bucket add versions
 
-          scoop install git 7zip rustup llvm nodejs24
+          scoop install git 7zip rustup llvm nodejs24 mingw
           rustup default stable
 
       - name: Install nu
@@ -183,31 +183,36 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "LIMUSIC_LASTFM_API_KEY=$env:LASTFM_API_KEY"
           Add-Content -Path $env:GITHUB_ENV -Value "LIMUSIC_LASTFM_API_SECRET=$env:LASTFM_API_SECRET"
 
-      - name: Download libmpv-2.dll
+      - name: Download and prepare libmpv
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          
+
           $url = "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-20260610-git-304426c.7z"
-          
+
           $archive = "mpv-dev.7z"
           $extractDir = "mpv-dev"
           $destinationDir = "src-tauri"
-          
+
           Invoke-WebRequest -Uri $url -OutFile $archive
-          
+
           7z x $archive "-o$extractDir" -y
-          
-          $dll = Get-ChildItem $extractDir -Recurse -File -Filter "*.dll"
-          
+
+          $dll = Get-ChildItem $extractDir -Recurse -File -Filter "libmpv-2.dll" | Select-Object -First 1
+
           if (-not $dll) {
               throw "libmpv-2.dll not found in archive"
           }
-          
-          Move-Item $dll.FullName $destinationDir -Force
-          
+
+          Copy-Item $dll.FullName "$destinationDir\libmpv-2.dll" -Force
+
+          Write-Host "Creating import library from DLL..."
+          gendef - "$destinationDir\libmpv-2.dll" > "$destinationDir\libmpv-2.def"
+          dlltool -d "$destinationDir\libmpv-2.def" -l "$destinationDir\libmpv.lib" -D libmpv-2.dll
+
           Remove-Item $archive -Force
           Remove-Item $extractDir -Recurse -Force
+
       - name: build_bin
         shell: pwsh
         if: ${{ github.ref_type == 'tag' }}
