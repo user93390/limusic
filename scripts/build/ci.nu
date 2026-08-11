@@ -41,7 +41,7 @@ def main [] {
 # - deb
 # - rpm
 def build_linux [] {
-    print sys host | hostname
+    # print sys host | hostname
 
     cargo tauri build --bundles rpm,deb
 }
