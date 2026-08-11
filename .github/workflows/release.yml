@@ -130,10 +130,6 @@ jobs:
         with:
           node-version: 24
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-
       - name: Install Scoop
         shell: pwsh
         run: |
@@ -148,7 +144,7 @@ jobs:
         shell: pwsh
         run: |
           scoop bucket add extras
-          scoop install git 7zip nodejs-lts pnpm nu rustup llvm
+          scoop install git 7zip nodejs24 pnpm nu rustup llvm
 
           rustup default stable
 
@@ -161,6 +157,8 @@ jobs:
 
           cd ./ui
           pnpm install --frozen-lockfile
+          pnpm approve-builds --if-needed --all
+          
           pnpm build
 
       - name: Install tauri-cli
