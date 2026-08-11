@@ -34,6 +34,10 @@ jobs:
         with:
           workspaces: . -> target
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
@@ -49,8 +53,7 @@ jobs:
             nushell
 
       - name: Setup pnpm
-        shell: nu {0}
-
+        shell: bash
         run: |
           npm install -g pnpm@10
 
@@ -64,9 +67,7 @@ jobs:
           sudo dnf install --setopt=install_weak_deps=False -y gcc pkg-config openssl-devel
           cargo install tauri-cli
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
+
 
       - name: Last.fm keys
         if: ${{ env.LASTFM_API_KEY != '' && env.LASTFM_API_SECRET != '' }}
