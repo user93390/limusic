@@ -113,9 +113,6 @@ jobs:
       LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
       LASTFM_API_SECRET: ${{ secrets.LASTFM_API_SECRET }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_KEY }}
-      RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
-      CC: clang
-      CXX: clang++
 
     steps:
       - uses: actions/checkout@v4
@@ -145,7 +142,7 @@ jobs:
         run: |
           scoop bucket add extras
 
-          scoop install git 7zip nodejs24 pnpm rustup llvm
+          scoop install git 7zip pnpm rustup llvm
           rustup default stable
 
       - name: Install nu
