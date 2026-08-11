@@ -52,7 +52,7 @@ jobs:
             mpv-devel \
             nushell
           
-      - name: Install dependencies
+      - name: Setup pnpm
         shell: bash
         run: |
               npm install -g pnpm@10
