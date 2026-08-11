@@ -55,12 +55,14 @@ jobs:
       - name: Setup pnpm
         shell: bash
         run: |
+          SHELL=bash
+          
           npm install -g pnpm@10
 
           pnpm setup --force
           pnpm install -g typescript
 
-          cd ./ui ; pnpm install --frozen-lockfile
+          cd ./ui && pnpm install --frozen-lockfile
 
       - name: Install tauri-cli
         run: |
