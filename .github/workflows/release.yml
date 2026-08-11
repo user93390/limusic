@@ -144,6 +144,8 @@ jobs:
         shell: pwsh
         run: |
           scoop bucket add extras
+          
+          scoop install versions/nodejs24
           scoop install git 7zip nodejs24 pnpm nu rustup llvm
 
           rustup default stable
@@ -158,7 +160,7 @@ jobs:
           cd ./ui
           pnpm install --frozen-lockfile
           pnpm approve-builds --if-needed --all
-          
+
           pnpm build
 
       - name: Install tauri-cli
@@ -184,6 +186,7 @@ jobs:
         if: ${{ github.ref_type == 'tag' }}
         working-directory: ${{ github.workspace }}
         run: |
+          $env:Path = "$env:LOCALAPPDATA\scoop\shims;$env:Path"
           nu scripts/build/ci.nu
 
       - name: create_release
