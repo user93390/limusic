@@ -62,6 +62,8 @@ jobs:
 
         run: |
           npm install -g pnpm@10
+          pnpm install -g typescript
+
           cd ./ui ; pnpm install --frozen-lockfile
 
       - name: Last.fm keys
