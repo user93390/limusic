@@ -34,7 +34,6 @@ jobs:
         with:
           workspaces: . -> target
 
-
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install tauri-cli
@@ -63,7 +62,7 @@ jobs:
 
         run: |
           npm install -g pnpm@10
-          cd ./ui && pnpm install --frozen-lockfile
+          cd ./ui ; pnpm install --frozen-lockfile
 
       - name: Last.fm keys
         if: ${{ env.LASTFM_API_KEY != '' && env.LASTFM_API_SECRET != '' }}
