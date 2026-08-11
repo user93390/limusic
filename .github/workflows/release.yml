@@ -5,7 +5,6 @@ on:
     branches: [ master ]
     tags: [ '*' ]
     paths-ignore: [ 'website/**', 'docs/**', '*.md' ]
-
 permissions:
   contents: write
   pages: write
@@ -57,10 +56,20 @@ jobs:
           node-version: 22
 
       - name: Setup pnpm
+        shell: nu {0}
+
         run: |
-          mkdir -p "$HOME/.local/share/pnpm"
-          echo "PNPM_HOME=$HOME/.local/share/pnpm" >> "$GITHUB_ENV"
-          echo "PATH=$HOME/.local/share/pnpm:$PATH" >> "$GITHUB_ENV"
+          let pnpm_home = ($env.HOME | path join ".local" "share" "pnpm")
+          
+          mkdir $pnpm_home
+          $"PNPM_HOME=$pnpm_home" | save --append $env.GITHUB_ENV
+          $"PATH=$pnpm_home:$env.PATH" | save --append $env.GITHUB_ENV
+          $pnpm_home | save --append $env.GITHUB_PATH
+
+          pnpm add -g typescript
+          
+          pnpm install
+          pnpm setup --force
 
       - name: Last.fm keys
         if: ${{ env.LASTFM_API_KEY != '' && env.LASTFM_API_SECRET != '' }}
@@ -69,13 +78,10 @@ jobs:
             "$LASTFM_API_KEY" "$LASTFM_API_SECRET" > src-tauri/lastfm.keys
 
       - name: build_bin
+        shell: nu {0}
         if: ${{ github.ref_type == 'tag' }}
         run: |
           sudo dnf install -y mingw64-gcc-c++ mingw64-nsis
-
-          pnpm add -g typescript
-          pnpm install
-          pnpm setup
 
           nu scripts/build/release.nu ${{ github.ref_name }} --os linux
 
