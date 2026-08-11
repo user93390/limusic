@@ -62,17 +62,11 @@ jobs:
         run: |
           cd ./ui
 
-          let pnpm_home = ($env.HOME | path join ".local" "share" "pnpm")
-
-          mkdir $pnpm_home
-          $"PNPM_HOME=$pnpm_home" | save --append $env.GITHUB_ENV
-          $"PATH=$pnpm_home:$env.PATH" | save --append $env.GITHUB_ENV
-          $pnpm_home | save --append $env.GITHUB_PATH
+          pnpm setup --force
 
           pnpm add -g typescript
-
           pnpm install
-          pnpm setup --force
+
 
       - name: Last.fm keys
         if: ${{ env.LASTFM_API_KEY != '' && env.LASTFM_API_SECRET != '' }}
@@ -83,6 +77,7 @@ jobs:
       - name: build_bin
         shell: nu {0}
         if: ${{ github.ref_type == 'tag' }}
+        working-directory: ${{ github.workspace }}
         run: |
           sudo dnf install -y mingw64-gcc-c++ mingw64-nsis
 
