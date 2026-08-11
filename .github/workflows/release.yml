@@ -140,6 +140,10 @@ jobs:
           Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
           irm get.scoop.sh | iex
 
+          $shims = "$env:USERPROFILE\scoop\shims"
+          Add-Content -Path $env:GITHUB_PATH -Value $shims
+          $env:PATH = "$shims;$env:PATH"
+
       - name: Install dependencies
         shell: pwsh
         run: |
@@ -149,6 +153,7 @@ jobs:
           rustup default stable
 
       - name: Setup pnpm
+        shell: pwsh
         run: |
           npm install -g pnpm@10
 
@@ -159,19 +164,22 @@ jobs:
           pnpm build
 
       - name: Install tauri-cli
+        shell: pwsh
         run: |
           pnpm add -D @tauri-apps/cli
 
       - name: Last.fm keys
         if: ${{ env.LASTFM_API_KEY != '' && env.LASTFM_API_SECRET != '' }}
+        shell: pwsh
         run: |
           "$env:LASTFM_API_KEY" | Out-File -FilePath "src-tauri/lastfm.keys" -Encoding utf8
           "$env:LASTFM_API_SECRET" | Out-File -FilePath "src-tauri/lastfm.keys" -Encoding utf8 -Append
 
       - name: Set env for build
+        shell: pwsh
         run: |
-          echo "LIMUSIC_LASTFM_API_KEY=$env:LASTFM_API_KEY" >> $env:GITHUB_ENV
-          echo "LIMUSIC_LASTFM_API_SECRET=$env:LASTFM_API_SECRET" >> $env:GITHUB_ENV
+          Add-Content -Path $env:GITHUB_ENV -Value "LIMUSIC_LASTFM_API_KEY=$env:LASTFM_API_KEY"
+          Add-Content -Path $env:GITHUB_ENV -Value "LIMUSIC_LASTFM_API_SECRET=$env:LASTFM_API_SECRET"
 
       - name: build_bin
         shell: pwsh
