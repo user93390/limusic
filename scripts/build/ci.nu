@@ -43,7 +43,7 @@ def main [] {
 def build_linux [] {
     # print sys host | hostname
 
-    cargo tauri build --bundles rpm,deb
+    pnpm tauri build --bundles rpm,deb
 }
 
 # Builds:
@@ -53,7 +53,7 @@ def build_windows [] {
     let host = sys host | hostname
     print "Building Windows on ($host)"
 
-    cargo tauri build --bundles msi,nsis
+    pnpm tauri build --bundles msi,nsis
 }
 
 # Builds:
@@ -62,5 +62,5 @@ def build_mac [] {
     let host = sys host | hostname
     print "Building Macos on ($host)"
 
-    cargo tauri build --bundles app
+    pnpm tauri build --bundles app
 }
