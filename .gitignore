@@ -25,3 +25,4 @@ rustypipe_reports/
 /skills-lock.json
 /plans
 scripts/bench.sh
+bin/

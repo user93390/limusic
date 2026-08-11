@@ -24,9 +24,9 @@ export def main [tag: string, --os: string = "linux"] {
         error make --unspanned { msg: $"tag ($tag) doesn't match version ($version)" }
     }
 
-    setup_env
+    # setup_env
 
-    print "Release env ready. Version: ($version)"
+    print "Release ready. Version: ($version)"
 }
 
 def setup_env [] {
