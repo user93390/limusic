@@ -64,9 +64,10 @@ jobs:
 
           pnpm setup --force
 
+          source /github/home/.config/nushell/env.nu
+
           pnpm add -g typescript
           pnpm install
-
 
       - name: Last.fm keys
         if: ${{ env.LASTFM_API_KEY != '' && env.LASTFM_API_SECRET != '' }}
