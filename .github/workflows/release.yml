@@ -51,23 +51,25 @@ jobs:
             dbus-devel \
             mpv-devel \
             nushell
-
-      - name: Setup pnpm
+          
+      - name: Install dependencies
         shell: bash
         run: |
-          npm install -g pnpm@10
-
-          pnpm setup --force
-          pnpm install -g typescript
-
-          cd ./ui && pnpm install --frozen-lockfile
-
+              npm install -g pnpm@10
+              
+              export PNPM_HOME="/github/home/.local/share/pnpm"
+              export PATH="$PNPM_HOME:$PATH"
+              
+              pnpm setup --force
+              pnpm install -g typescript
+              
+              cd ./ui && pnpm install --frozen-lockfile
+          
       - name: Install tauri-cli
+        shell: bash
         run: |
           sudo dnf install --setopt=install_weak_deps=False -y gcc pkg-config openssl-devel
           cargo install tauri-cli
-
-
 
       - name: Last.fm keys
         if: ${{ env.LASTFM_API_KEY != '' && env.LASTFM_API_SECRET != '' }}
