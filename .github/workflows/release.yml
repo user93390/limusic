@@ -144,11 +144,20 @@ jobs:
         shell: pwsh
         run: |
           scoop bucket add extras
-          
-          scoop install versions/nodejs24
-          scoop install git 7zip nodejs24 pnpm nu rustup llvm
 
+          scoop install git 7zip nodejs24 pnpm rustup llvm
           rustup default stable
+
+      - name: Install nu
+        shell: pwsh
+        run: |
+          $version = "0.101.0"
+          $arch = "x86_64-pc-windows-msvc"
+          $url = "https://github.com/nushell/nushell/releases/download/$version/nu-$version-$arch.zip"
+          Invoke-WebRequest -Uri $url -OutFile "nu.zip"
+          Expand-Archive -Path "nu.zip" -DestinationPath "$env:LOCALAPPDATA\nu"
+          Remove-Item "nu.zip"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:LOCALAPPDATA\nu"
 
       - name: Setup pnpm
         shell: pwsh
@@ -186,7 +195,6 @@ jobs:
         if: ${{ github.ref_type == 'tag' }}
         working-directory: ${{ github.workspace }}
         run: |
-          $env:Path = "$env:LOCALAPPDATA\scoop\shims;$env:Path"
           nu scripts/build/ci.nu
 
       - name: create_release
