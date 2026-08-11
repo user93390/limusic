@@ -64,10 +64,19 @@ jobs:
 
           pnpm setup --force
 
+          let pnpm_home = ($env.HOME | path join ".local" "share" "pnpm")
+
+          mkdir $pnpm_home
+          $"PNPM_HOME=$pnpm_home" | save --append $env.GITHUB_ENV
+          $"PATH=$pnpm_home:$env.PATH" | save --append $env.GITHUB_ENV
+          $pnpm_home | save --append $env.GITHUB_PATH
+
           source /github/home/.config/nushell/env.nu
 
           pnpm add -g typescript
+
           pnpm install
+
 
       - name: Last.fm keys
         if: ${{ env.LASTFM_API_KEY != '' && env.LASTFM_API_SECRET != '' }}
