@@ -183,13 +183,6 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "LIMUSIC_LASTFM_API_KEY=$env:LASTFM_API_KEY"
           Add-Content -Path $env:GITHUB_ENV -Value "LIMUSIC_LASTFM_API_SECRET=$env:LASTFM_API_SECRET"
 
-      - name: build_bin
-        shell: pwsh
-        if: ${{ github.ref_type == 'tag' }}
-        working-directory: ${{ github.workspace }}
-        run: |
-          nu scripts/build/ci.nu
-
       - name: Download libmpv-2.dll
         shell: pwsh
         run: |
@@ -208,6 +201,14 @@ jobs:
           
           Write-Host "libmpv-2.dll is ready at src-tauri/libmpv-2.dll"
           Test-Path "src-tauri/libmpv-2.dll"
+
+      - name: build_bin
+        shell: pwsh
+        if: ${{ github.ref_type == 'tag' }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          nu scripts/build/ci.nu
+
       - name: create_release
         if: ${{ github.ref_type == 'tag' }}
         uses: softprops/action-gh-release@v2
