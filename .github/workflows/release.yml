@@ -51,20 +51,22 @@ jobs:
             dbus-devel \
             mpv-devel \
             nushell
-          
+
       - name: Setup pnpm
         shell: bash
         run: |
               npm install -g pnpm@10
-              
+
               export PNPM_HOME="/github/home/.local/share/pnpm"
               export PATH="$PNPM_HOME:$PATH"
-              
+
               pnpm setup --force
               pnpm install -g typescript
-              
-              cd ./ui && pnpm install --frozen-lockfile
-          
+              cd ./ui
+
+              pnpm install --frozen-lockfile
+              pnpm build
+
       - name: Install tauri-cli
         shell: bash
         run: |
