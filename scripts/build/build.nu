@@ -1,4 +1,4 @@
-# Builds an rpm package of the entire app.
+# Builds an rpm package of the entire app. Development only
 
 def main [args?: list<string>, notes: string = "See the commit history for changes."]  {
     let repo_root = $env.PWD
