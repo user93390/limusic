@@ -164,8 +164,9 @@ jobs:
           pnpm setup
 
           cd ./ui
+
+          pnpm config set onlyBuiltDependencies false
           pnpm install --frozen-lockfile
-          pnpm approve-builds --if-needed --all
 
           pnpm build
 
