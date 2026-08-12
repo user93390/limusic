@@ -232,54 +232,66 @@ jobs:
           Write-Host "dumpbin: $vcToolsBin\dumpbin.exe"
           Write-Host "lib.exe: $vcToolsBin\lib.exe"
 
+      - name: Install uv (Python package manager)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Invoke-WebRequest -Uri "https://astral.sh/uv/install.ps1" -OutFile "install-uv.ps1"
+          powershell -ExecutionPolicy Bypass -File "install-uv.ps1" -SkipShim
+          Remove-Item "install-uv.ps1" -Force
+
       - name: Download and prepare libmpv
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          $url = "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-20260610-git-304426c.7z"
-
           $archive = "mpv-dev.7z"
           $extractDir = "mpv-dev"
           $destinationDir = "src-tauri"
 
-          Invoke-WebRequest -Uri $url -OutFile $archive
+          Invoke-WebRequest -Uri "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-20260610-git-304426c.7z" -OutFile $archive
 
           7z x $archive "-o$extractDir" -y
 
           $dll = Get-ChildItem $extractDir -Recurse -File -Filter "libmpv-2.dll" | Select-Object -First 1
-
           if (-not $dll) {
               throw "libmpv-2.dll not found in archive"
           }
 
           Copy-Item $dll.FullName "$destinationDir\libmpv-2.dll" -Force
 
-          Write-Host "Creating import library from DLL using MSVC tools..."
-          $dllPath = (Resolve-Path "$destinationDir\libmpv-2.dll").Path
+          Write-Host "Extracting export names and writing DEF file with Python..."
+          $pyScript = @'
+import pefile
 
-          $exports = @()
-          $inExports = $false
-          & dumpbin /exports $dllPath | ForEach-Object {
-              if ($_ -match '^\s+ordinal\s+hint\s+RVA\s+name') {
-                  $inExports = $true
-                  return
-              }
-              if ($inExports -and $_ -match '^\s+\d+\s+\d+\s+[0-9A-Fa-f]+\s+(\S.+)') {
-                  $name = $matches[1].Trim()
-                  if ($name -and $name -notmatch '->' -and $name -notmatch '^Java_') {
-                      $exports += $name
-                  }
-              }
-          }
+pe = pefile.PE(r"DUMMY_DLL_PATH")
+exp_dir = pe.OPTIONAL_HEADER.DATA_DIRECTORY[0]
+exp = pe.parse_export_directory(exp_dir.VirtualAddress, exp_dir.Size)
 
-          if ($exports.Count -eq 0) {
-              throw "No valid exports found in DLL"
-          }
+names = []
+for sym in exp.symbols:
+    if sym.name:
+        name = sym.name.decode('ascii', errors='replace')
+        if not name.startswith('Java_') and '->' not in name:
+            names.append(name)
 
-          Write-Host "Found $($exports.Count) exports"
-          $defContent = "EXPORTS`n" + ($exports | ForEach-Object { "    $_" }) -join "`n"
-          Set-Content -Path "$destinationDir\mpv.def" -Value $defContent -Encoding ascii
+lines = ['EXPORTS'] + ['    ' + n for n in names]
+def_bytes = ('\r\n'.join(lines) + '\r\n').encode('ascii')
+
+with open(r"DUMMY_DEF_PATH", 'wb') as f:
+    f.write(def_bytes)
+
+print('Written %d bytes, %d exports' % (len(def_bytes), len(names)))
+pe.close()
+'@
+
+          $pyScript = $pyScript -replace 'DUMMY_DLL_PATH', $dll.FullName
+          $pyScript = $pyScript -replace 'DUMMY_DEF_PATH', "$destinationDir\mpv.def"
+
+          $uvBin = "$env:LOCALAPPDATA\uv\uv.exe"
+          & $uvBin run --no-project --with pefile python -c $pyScript
+
+          Write-Host "Building MSVC import library..."
           & lib /def:"$destinationDir\mpv.def" /out:"$destinationDir\mpv.lib" /machine:x64
 
           Remove-Item $archive -Force
