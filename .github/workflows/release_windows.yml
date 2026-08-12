@@ -3,12 +3,17 @@ name: Windows Release
 on:
   push:
     branches: [ master ]
+    tags: [ '*' ]
     paths-ignore: [ 'website/**', 'docs/**', '*.md' ]
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build_windows:
