@@ -183,6 +183,22 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "LIMUSIC_LASTFM_API_KEY=$env:LASTFM_API_KEY"
           Add-Content -Path $env:GITHUB_ENV -Value "LIMUSIC_LASTFM_API_SECRET=$env:LASTFM_API_SECRET"
 
+      - name: Locate MSVC tools
+        shell: pwsh
+        run: |
+          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vsWhere -latest -property installationPath
+          $dumpbin = Get-ChildItem $vsPath -Recurse -Filter "dumpbin.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+
+          if (-not $dumpbin) {
+              throw "dumpbin.exe not found in VS installation"
+          }
+
+          $vcTools = Split-Path $dumpbin.DirectoryName
+          Add-Content -Path $env:GITHUB_PATH -Value $vcTools
+
+          Write-Host "VS tools: $vcTools"
+
       - name: Download and prepare libmpv
         shell: pwsh
         run: |
@@ -206,12 +222,22 @@ jobs:
 
           Copy-Item $dll.FullName "$destinationDir\libmpv-2.dll" -Force
 
-          Write-Host "Creating import library from DLL..."
-          gendef - "$destinationDir\libmpv-2.dll" > "$destinationDir\libmpv-2.def"
-          dlltool -d "$destinationDir\libmpv-2.def" -l "$destinationDir\mpv.lib" -D libmpv-2.dll
+          Write-Host "Creating import library from DLL using MSVC tools..."
+          $dllPath = (Resolve-Path "$destinationDir\libmpv-2.dll").Path
+          $exports = & dumpbin /exports $dllPath | Select-String -Pattern '^\s+\d+\s+[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+(\w+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+          $defContent = "EXPORTS`n" + ($exports | ForEach-Object { "    $_" }) -join "`n"
+          Set-Content -Path "$destinationDir\mpv.def" -Value $defContent -Encoding ascii
+          & lib /def:"$destinationDir\mpv.def" /name:libmpv-2.dll /out:"$destinationDir\mpv.lib" /machine:x64
 
           Remove-Item $archive -Force
           Remove-Item $extractDir -Recurse -Force
+
+      - name: Set env for linker
+        shell: pwsh
+        run: |
+          $srcDir = (Resolve-Path src-tauri).Path
+          Add-Content -Path $env:GITHUB_ENV -Value "RUSTFLAGS=-L native=$srcDir"
+          Add-Content -Path $env:GITHUB_ENV -Value "LIB=$srcDir;$env:LIB"
 
       - name: build_bin
         shell: pwsh
