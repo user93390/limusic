@@ -186,33 +186,51 @@ jobs:
       - name: Locate MSVC tools
         shell: pwsh
         run: |
-          $sdkBin = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Directory |
+          Import-Module VSSetup -ErrorAction Stop
+
+          $vs = Get-VSSetupInstance -Prerelease -All |
+            Where-Object { $_.DisplayName -match "Visual Studio" } |
+            Select-Object -First 1
+
+          if (-not $vs) {
+              throw "No Visual Studio instance found"
+          }
+
+          $vcToolsRoot = Join-Path $vs.InstallationPath "VC\Tools\MSVC"
+
+          if (-not (Test-Path $vcToolsRoot)) {
+              throw "VC Tools MSVC directory not found at: $vcToolsRoot"
+          }
+
+          $msvcVersion = Get-ChildItem $vcToolsRoot -Directory |
             Sort-Object Name -Descending |
             Select-Object -First 1
 
-          if (-not $sdkBin) {
-              throw "Windows SDK not found"
+          if (-not $msvcVersion) {
+              throw "No MSVC version folder found in: $vcToolsRoot"
           }
 
-          $hostArchBin = Join-Path $sdkBin.FullName "x64"
+          $vcToolsBin = Join-Path $msvcVersion.FullName "bin\Hostx64\x64"
 
-          if (-not (Test-Path $hostArchBin)) {
-              throw "Windows SDK x64 bin directory not found at: $hostArchBin"
+          if (-not (Test-Path $vcToolsBin)) {
+              throw "VC Tools bin directory not found at: $vcToolsBin"
           }
 
-          if (-not (Test-Path "$hostArchBin\dumpbin.exe")) {
-              throw "dumpbin.exe not found in: $hostArchBin"
+          if (-not (Test-Path "$vcToolsBin\dumpbin.exe")) {
+              throw "dumpbin.exe not found in: $vcToolsBin"
           }
 
-          if (-not (Test-Path "$hostArchBin\lib.exe")) {
-              throw "lib.exe not found in: $hostArchBin"
+          if (-not (Test-Path "$vcToolsBin\lib.exe")) {
+              throw "lib.exe not found in: $vcToolsBin"
           }
 
-          Add-Content -Path $env:GITHUB_PATH -Value $hostArchBin
+          Add-Content -Path $env:GITHUB_PATH -Value $vcToolsBin
 
-          Write-Host "Windows SDK tools: $hostArchBin"
-          Write-Host "dumpbin: $hostArchBin\dumpbin.exe"
-          Write-Host "lib.exe: $hostArchBin\lib.exe"
+          Write-Host "VS installation path: $($vs.InstallationPath)"
+          Write-Host "MSVC version: $($msvcVersion.Name)"
+          Write-Host "VC Tools bin: $vcToolsBin"
+          Write-Host "dumpbin: $vcToolsBin\dumpbin.exe"
+          Write-Host "lib.exe: $vcToolsBin\lib.exe"
 
       - name: Download and prepare libmpv
         shell: pwsh
