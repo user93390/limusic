@@ -257,10 +257,30 @@ jobs:
 
           Write-Host "Creating import library from DLL using MSVC tools..."
           $dllPath = (Resolve-Path "$destinationDir\libmpv-2.dll").Path
-          $exports = & dumpbin /exports $dllPath | Select-String -Pattern '^\s+\d+\s+[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+(\w+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+
+          $exports = @()
+          $inExports = $false
+          & dumpbin /exports $dllPath | ForEach-Object {
+              if ($_ -match '^\s+ordinal\s+hint\s+RVA\s+name') {
+                  $inExports = $true
+                  return
+              }
+              if ($inExports -and $_ -match '^\s+\d+\s+\d+\s+[0-9A-Fa-f]+\s+(\S.+)') {
+                  $name = $matches[1].Trim()
+                  if ($name -and $name -notmatch '->' -and $name -notmatch '^Java_') {
+                      $exports += $name
+                  }
+              }
+          }
+
+          if ($exports.Count -eq 0) {
+              throw "No valid exports found in DLL"
+          }
+
+          Write-Host "Found $($exports.Count) exports"
           $defContent = "EXPORTS`n" + ($exports | ForEach-Object { "    $_" }) -join "`n"
           Set-Content -Path "$destinationDir\mpv.def" -Value $defContent -Encoding ascii
-          & lib /def:"$destinationDir\mpv.def" /name:libmpv-2.dll /out:"$destinationDir\mpv.lib" /machine:x64
+          & lib /def:"$destinationDir\mpv.def" /out:"$destinationDir\mpv.lib" /machine:x64
 
           Remove-Item $archive -Force
           Remove-Item $extractDir -Recurse -Force
