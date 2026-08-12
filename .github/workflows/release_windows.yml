@@ -1,7 +1,7 @@
 name: Windows release
 
 on:
-  pull_request:
+  push:
     branches: [ master ]
     paths-ignore: [ 'website/**', 'docs/**', '*.md' ]
 
