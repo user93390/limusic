@@ -232,18 +232,10 @@ jobs:
           Write-Host "dumpbin: $vcToolsBin\dumpbin.exe"
           Write-Host "lib.exe: $vcToolsBin\lib.exe"
 
-      - name: Install uv
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri "https://astral.sh/uv/install.ps1" -OutFile "install-uv.ps1"
-          powershell -ExecutionPolicy Bypass -File "install-uv.ps1" -SkipShim
-          Remove-Item "install-uv.ps1" -Force
-
       - name: Download and prepare libmpv
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-20260610-git-304426c.7z" -OutFile "mpv-dev.7z"
-
           7z x "mpv-dev.7z" "-ompv-dev" -y
 
           $dll = Get-ChildItem "mpv-dev" -Recurse -File -Filter "libmpv-2.dll" | Select-Object -First 1
@@ -251,7 +243,12 @@ jobs:
 
           Copy-Item $dll.FullName "src-tauri\libmpv-2.dll" -Force
 
-          & "$env:LOCALAPPDATA\uv\uv.exe" run --no-project --with pefile python "$pwd/prepare_mpv_def.py" $dll.FullName "src-tauri\mpv.def"
+          Invoke-WebRequest -Uri "https://astral.sh/uv/install.ps1" -OutFile "install-uv.ps1"
+          powershell -ExecutionPolicy Bypass -File "install-uv.ps1" -NoModifyPath
+          Remove-Item "install-uv.ps1" -Force
+
+          $scriptPath = Join-Path $PWD "scripts\build\prepare_mpv_def.py"
+          uv run --no-project --with pefile python $scriptPath $dll.FullName "src-tauri\mpv.def"
 
           & lib /def:"src-tauri\mpv.def" /out:"src-tauri\mpv.lib" /machine:x64
 
