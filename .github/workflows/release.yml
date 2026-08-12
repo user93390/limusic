@@ -208,7 +208,7 @@ jobs:
 
           Write-Host "Creating import library from DLL..."
           gendef - "$destinationDir\libmpv-2.dll" > "$destinationDir\libmpv-2.def"
-          dlltool -d "$destinationDir\libmpv-2.def" -l "$destinationDir\libmpv.lib" -D libmpv-2.dll
+          dlltool -d "$destinationDir\libmpv-2.def" -l "$destinationDir\mpv.lib" -D libmpv-2.dll
 
           Remove-Item $archive -Force
           Remove-Item $extractDir -Recurse -Force
