@@ -1,4 +1,4 @@
-name: Windows release
+name: Windows Release
 
 on:
   push:
@@ -115,8 +115,8 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-20260610-git-304426c.7z" -OutFile "mpv-dev.7z"
           7z x "mpv-dev.7z" "-ompv-dev" -y
 
-          $dll = Get-ChildItem "mpv-dev" -Recurse -File -Filter "libmpv.dll" | Select-Object -First 1
-          if (-not $dll) { throw "libmpv.dll not found in archive" }
+          $dll = Get-ChildItem "mpv-dev" -Recurse -File -Filter "libmpv-2.dll" | Select-Object -First 1
+          if (-not $dll) { throw "libmpv-2.dll not found in archive" }
 
           Copy-Item $dll.FullName "src-tauri\libmpv.dll" -Force
 

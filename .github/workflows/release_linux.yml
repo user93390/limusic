@@ -1,5 +1,5 @@
 ---
-name: CI release
+name: Linux Release
 
 on:
   push:
