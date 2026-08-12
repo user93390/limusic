@@ -186,18 +186,33 @@ jobs:
       - name: Locate MSVC tools
         shell: pwsh
         run: |
-          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vsPath = & $vsWhere -latest -property installationPath
-          $dumpbin = Get-ChildItem $vsPath -Recurse -Filter "dumpbin.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $sdkBin = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Directory |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
 
-          if (-not $dumpbin) {
-              throw "dumpbin.exe not found in VS installation"
+          if (-not $sdkBin) {
+              throw "Windows SDK not found"
           }
 
-          $vcTools = Split-Path $dumpbin.DirectoryName
-          Add-Content -Path $env:GITHUB_PATH -Value $vcTools
+          $hostArchBin = Join-Path $sdkBin.FullName "x64"
 
-          Write-Host "VS tools: $vcTools"
+          if (-not (Test-Path $hostArchBin)) {
+              throw "Windows SDK x64 bin directory not found at: $hostArchBin"
+          }
+
+          if (-not (Test-Path "$hostArchBin\dumpbin.exe")) {
+              throw "dumpbin.exe not found in: $hostArchBin"
+          }
+
+          if (-not (Test-Path "$hostArchBin\lib.exe")) {
+              throw "lib.exe not found in: $hostArchBin"
+          }
+
+          Add-Content -Path $env:GITHUB_PATH -Value $hostArchBin
+
+          Write-Host "Windows SDK tools: $hostArchBin"
+          Write-Host "dumpbin: $hostArchBin\dumpbin.exe"
+          Write-Host "lib.exe: $hostArchBin\lib.exe"
 
       - name: Download and prepare libmpv
         shell: pwsh
@@ -245,8 +260,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           nu scripts/build/ci.nu
-
-
+          
       - name: create_release
         if: ${{ github.ref_type == 'tag' }}
         uses: softprops/action-gh-release@v2
