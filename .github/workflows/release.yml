@@ -139,7 +139,7 @@ jobs:
           scoop bucket add extras
           scoop bucket add versions
 
-          scoop install git 7zip rustup llvm nodejs24 mingw
+          scoop install git 7zip rustup llvm nodejs24 mingw uv
           rustup default stable
 
       - name: Install nu
@@ -242,10 +242,6 @@ jobs:
           if (-not $dll) { throw "libmpv-2.dll not found in archive" }
 
           Copy-Item $dll.FullName "src-tauri\libmpv-2.dll" -Force
-
-          Invoke-WebRequest -Uri "https://astral.sh/uv/install.ps1" -OutFile "install-uv.ps1"
-          powershell -ExecutionPolicy Bypass -File "install-uv.ps1" -NoModifyPath
-          Remove-Item "install-uv.ps1" -Force
 
           $scriptPath = Join-Path $PWD "scripts\build\prepare_mpv_def.py"
           uv run --no-project --with pefile python $scriptPath $dll.FullName "src-tauri\mpv.def"
