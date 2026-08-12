@@ -1,0 +1,109 @@
+---
+name: CI release
+
+on:
+  push:
+    branches: [ master ]
+    tags: [ '*' ]
+    paths-ignore: [ 'website/**', 'docs/**', '*.md' ]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build_linux:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+
+    env:
+      LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+      LASTFM_API_SECRET: ${{ secrets.LASTFM_API_SECRET }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_KEY }}
+      RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
+      CC: clang
+      CXX: clang++
+
+      SHELL: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: |
+          sudo dnf install --setopt=install_weak_deps=False -y \
+            webkit2gtk4.1-devel \
+            gtk3-devel \
+            libayatana-appindicator-gtk3-devel \
+            librsvg2-devel \
+            openssl-devel \
+            dbus-devel \
+            mpv-devel \
+            nushell \
+            pkg-config \
+            clang \
+            gcc-c++ \
+            lld \
+            gcc
+
+      - name: Setup pnpm
+        shell: bash
+        run: |
+            npm install -g pnpm@10
+
+            export PNPM_HOME="/github/home/.local/share/pnpm"
+            export PATH="$PNPM_HOME:$PATH"
+
+            pnpm setup --force
+            pnpm install -g typescript
+            cd ./ui
+
+            pnpm install --frozen-lockfile
+            pnpm build
+
+      - name: Install tauri-cli
+        shell: bash
+        run: |
+          pnpm add -D @tauri-apps/cli
+
+      - name: Last.fm keys
+        if: ${{ env.LASTFM_API_KEY != '' && env.LASTFM_API_SECRET != '' }}
+        run: |
+          printf 'LIMUSIC_LASTFM_API_KEY=%s\nLIMUSIC_LASTFM_API_SECRET=%s\n' \
+            "$LASTFM_API_KEY" "$LASTFM_API_SECRET" > src-tauri/lastfm.keys
+
+      - name: build_bin
+        shell: nu {0}
+        if: ${{ github.ref_type == 'tag' }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          nu scripts/build/ci.nu
+      - name: create_release
+        if: ${{ github.ref_type == 'tag' }}
+        uses: softprops/action-gh-release@v2
+
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            ./target/release/bundle/deb/*.deb
+            ./target/release/bundle/rpm/*.rpm
+            ./target/release/limusic

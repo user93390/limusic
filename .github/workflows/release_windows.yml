@@ -1,112 +1,16 @@
----
-name: CI release
+name: Windows release
 
 on:
-  push:
+  pull_request:
     branches: [ master ]
-    tags: [ '*' ]
     paths-ignore: [ 'website/**', 'docs/**', '*.md' ]
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  build_linux:
-    runs-on: ubuntu-latest
-    container:
-      image: fedora:latest
-
-    env:
-      LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
-      LASTFM_API_SECRET: ${{ secrets.LASTFM_API_SECRET }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_KEY }}
-      RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
-      CC: clang
-      CXX: clang++
-
-      SHELL: bash
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install dependencies
-        run: |
-          sudo dnf install --setopt=install_weak_deps=False -y \
-            webkit2gtk4.1-devel \
-            gtk3-devel \
-            libayatana-appindicator-gtk3-devel \
-            librsvg2-devel \
-            openssl-devel \
-            dbus-devel \
-            mpv-devel \
-            nushell \
-            pkg-config \
-            clang \
-            gcc-c++ \
-            lld \
-            gcc
-
-      - name: Setup pnpm
-        shell: bash
-        run: |
-              npm install -g pnpm@10
-
-              export PNPM_HOME="/github/home/.local/share/pnpm"
-              export PATH="$PNPM_HOME:$PATH"
-
-              pnpm setup --force
-              pnpm install -g typescript
-              cd ./ui
-
-              pnpm install --frozen-lockfile
-              pnpm build
-
-      - name: Install tauri-cli
-        shell: bash
-        run: |
-          pnpm add -D @tauri-apps/cli
-
-      - name: Last.fm keys
-        if: ${{ env.LASTFM_API_KEY != '' && env.LASTFM_API_SECRET != '' }}
-        run: |
-          printf 'LIMUSIC_LASTFM_API_KEY=%s\nLIMUSIC_LASTFM_API_SECRET=%s\n' \
-            "$LASTFM_API_KEY" "$LASTFM_API_SECRET" > src-tauri/lastfm.keys
-
-      - name: build_bin
-        shell: nu {0}
-        if: ${{ github.ref_type == 'tag' }}
-        working-directory: ${{ github.workspace }}
-        run: |
-          nu scripts/build/ci.nu
-      - name: create_release
-        if: ${{ github.ref_type == 'tag' }}
-        uses: softprops/action-gh-release@v2
-
-        with:
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          files: |
-            ./target/release/bundle/deb/*.deb
-            ./target/release/bundle/rpm/*.rpm
-            ./target/release/limusic
   build_windows:
     runs-on: windows-latest
     env:
@@ -198,39 +102,12 @@ jobs:
 
           $vcToolsRoot = Join-Path $vs.InstallationPath "VC\Tools\MSVC"
 
-          if (-not (Test-Path $vcToolsRoot)) {
-              throw "VC Tools MSVC directory not found at: $vcToolsRoot"
-          }
-
           $msvcVersion = Get-ChildItem $vcToolsRoot -Directory |
             Sort-Object Name -Descending |
             Select-Object -First 1
 
-          if (-not $msvcVersion) {
-              throw "No MSVC version folder found in: $vcToolsRoot"
-          }
-
           $vcToolsBin = Join-Path $msvcVersion.FullName "bin\Hostx64\x64"
-
-          if (-not (Test-Path $vcToolsBin)) {
-              throw "VC Tools bin directory not found at: $vcToolsBin"
-          }
-
-          if (-not (Test-Path "$vcToolsBin\dumpbin.exe")) {
-              throw "dumpbin.exe not found in: $vcToolsBin"
-          }
-
-          if (-not (Test-Path "$vcToolsBin\lib.exe")) {
-              throw "lib.exe not found in: $vcToolsBin"
-          }
-
           Add-Content -Path $env:GITHUB_PATH -Value $vcToolsBin
-
-          Write-Host "VS installation path: $($vs.InstallationPath)"
-          Write-Host "MSVC version: $($msvcVersion.Name)"
-          Write-Host "VC Tools bin: $vcToolsBin"
-          Write-Host "dumpbin: $vcToolsBin\dumpbin.exe"
-          Write-Host "lib.exe: $vcToolsBin\lib.exe"
 
       - name: Download and prepare libmpv
         shell: pwsh
@@ -238,12 +115,12 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-20260610-git-304426c.7z" -OutFile "mpv-dev.7z"
           7z x "mpv-dev.7z" "-ompv-dev" -y
 
-          $dll = Get-ChildItem "mpv-dev" -Recurse -File -Filter "libmpv-2.dll" | Select-Object -First 1
-          if (-not $dll) { throw "libmpv-2.dll not found in archive" }
+          $dll = Get-ChildItem "mpv-dev" -Recurse -File -Filter "libmpv.dll" | Select-Object -First 1
+          if (-not $dll) { throw "libmpv.dll not found in archive" }
 
-          Copy-Item $dll.FullName "src-tauri\libmpv-2.dll" -Force
+          Copy-Item $dll.FullName "src-tauri\libmpv.dll" -Force
 
-          $scriptPath = Join-Path $PWD "scripts\build\prepare_mpv_def.py"
+          $scriptPath = Join-Path $PWD "scripts\build\mpv.py"
           uv run --no-project --with pefile python $scriptPath $dll.FullName "src-tauri\mpv.def"
 
           & lib /def:"src-tauri\mpv.def" /out:"src-tauri\mpv.lib" /machine:x64
@@ -264,7 +141,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           nu scripts/build/ci.nu
-          
+
       - name: create_release
         if: ${{ github.ref_type == 'tag' }}
         uses: softprops/action-gh-release@v2

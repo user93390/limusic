@@ -4,5 +4,5 @@
 # workaround here. Not `force`d — set GDK_BACKEND=wayland in your shell to override and experiment.
 # Ignored on macOS/Windows (no GDK). ponytail: drop this once WebKitGTK/Wayland stops needing it.
 [env]
-GDK_BACKEND = "x11"
-WEBKIT_DISABLE_DMABUF_RENDERER = "1"
+GDK_BACKEND = "wayland"
+WEBKIT_DISABLE_DMABUF_RENDERER = "0"

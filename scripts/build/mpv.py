@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Extract export symbols from libmpv-2.dll and write a MSVC-compatible .def file.
+Extract export symbols from libmpv.dll and write a MSVC-compatible .def file.
 
 Reads the PE export directory directly (via pefile), filters out Java JNI
 forwarder symbols and -> export entries, and writes a well-formed DEF file
