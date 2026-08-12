@@ -232,10 +232,9 @@ jobs:
           Write-Host "dumpbin: $vcToolsBin\dumpbin.exe"
           Write-Host "lib.exe: $vcToolsBin\lib.exe"
 
-      - name: Install uv (Python package manager)
+      - name: Install uv
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
           Invoke-WebRequest -Uri "https://astral.sh/uv/install.ps1" -OutFile "install-uv.ps1"
           powershell -ExecutionPolicy Bypass -File "install-uv.ps1" -SkipShim
           Remove-Item "install-uv.ps1" -Force
@@ -243,59 +242,21 @@ jobs:
       - name: Download and prepare libmpv
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
+          Invoke-WebRequest -Uri "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-20260610-git-304426c.7z" -OutFile "mpv-dev.7z"
 
-          $archive = "mpv-dev.7z"
-          $extractDir = "mpv-dev"
-          $destinationDir = "src-tauri"
+          7z x "mpv-dev.7z" "-ompv-dev" -y
 
-          Invoke-WebRequest -Uri "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-20260610-git-304426c.7z" -OutFile $archive
+          $dll = Get-ChildItem "mpv-dev" -Recurse -File -Filter "libmpv-2.dll" | Select-Object -First 1
+          if (-not $dll) { throw "libmpv-2.dll not found in archive" }
 
-          7z x $archive "-o$extractDir" -y
+          Copy-Item $dll.FullName "src-tauri\libmpv-2.dll" -Force
 
-          $dll = Get-ChildItem $extractDir -Recurse -File -Filter "libmpv-2.dll" | Select-Object -First 1
-          if (-not $dll) {
-              throw "libmpv-2.dll not found in archive"
-          }
+          & "$env:LOCALAPPDATA\uv\uv.exe" run --no-project --with pefile python "$pwd/prepare_mpv_def.py" $dll.FullName "src-tauri\mpv.def"
 
-          Copy-Item $dll.FullName "$destinationDir\libmpv-2.dll" -Force
+          & lib /def:"src-tauri\mpv.def" /out:"src-tauri\mpv.lib" /machine:x64
 
-          Write-Host "Extracting export names and writing DEF file with Python..."
-          $pyScript = @'
-import pefile
-
-pe = pefile.PE(r"DUMMY_DLL_PATH")
-exp_dir = pe.OPTIONAL_HEADER.DATA_DIRECTORY[0]
-exp = pe.parse_export_directory(exp_dir.VirtualAddress, exp_dir.Size)
-
-names = []
-for sym in exp.symbols:
-    if sym.name:
-        name = sym.name.decode('ascii', errors='replace')
-        if not name.startswith('Java_') and '->' not in name:
-            names.append(name)
-
-lines = ['EXPORTS'] + ['    ' + n for n in names]
-def_bytes = ('\r\n'.join(lines) + '\r\n').encode('ascii')
-
-with open(r"DUMMY_DEF_PATH", 'wb') as f:
-    f.write(def_bytes)
-
-print('Written %d bytes, %d exports' % (len(def_bytes), len(names)))
-pe.close()
-'@
-
-          $pyScript = $pyScript -replace 'DUMMY_DLL_PATH', $dll.FullName
-          $pyScript = $pyScript -replace 'DUMMY_DEF_PATH', "$destinationDir\mpv.def"
-
-          $uvBin = "$env:LOCALAPPDATA\uv\uv.exe"
-          & $uvBin run --no-project --with pefile python -c $pyScript
-
-          Write-Host "Building MSVC import library..."
-          & lib /def:"$destinationDir\mpv.def" /out:"$destinationDir\mpv.lib" /machine:x64
-
-          Remove-Item $archive -Force
-          Remove-Item $extractDir -Recurse -Force
+          Remove-Item "mpv-dev.7z" -Force
+          Remove-Item "mpv-dev" -Recurse -Force
 
       - name: Set env for linker
         shell: pwsh
