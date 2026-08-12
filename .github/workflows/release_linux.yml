@@ -71,12 +71,13 @@ jobs:
             cd ./ui
             
             pnpm setup --force
+            source /github/home/.bashrc
+                        
             pnpm install -g typescript
 
             pnpm install --frozen-lockfile
 
-            export PNPM_HOME="/github/home/.local/share/pnpm"
-            export PATH="$PNPM_HOME:$PATH"
+            
             pnpm build
 
       - name: Install tauri-cli
