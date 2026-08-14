@@ -4,6 +4,7 @@
 use std::sync::Mutex;
 
 use rusqlite::Connection;
+use sea_query::{ColumnDef, Index, OnConflict, Query, SqliteQueryBuilder, Table};
 
 pub struct Db(Mutex<Connection>);
 
@@ -34,58 +35,98 @@ impl Db {
         // seconds of "what was playing", which is the correct trade for a music player, and no
         // crash of ours can corrupt the file either way. `journal_mode` answers with a row, so it
         // is a query rather than a `pragma_update`.
-        let _ = conn.query_row("PRAGMA journal_mode=WAL", [], |r| r.get::<_, String>(0));
-        let _ = conn.pragma_update(None, "synchronous", "NORMAL");
-        conn.execute_batch(
-            r#"
-            CREATE TABLE IF NOT EXISTS settings (
-                key   TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS stream_url_cache (
-                video_id    TEXT PRIMARY KEY,
-                url         TEXT NOT NULL,
-                itag        INTEGER NOT NULL,
-                expires_at  INTEGER NOT NULL,
-                loudness_db REAL
-            );
-            CREATE TABLE IF NOT EXISTS lyrics_cache (
-                video_id   TEXT PRIMARY KEY,
-                lyrics     TEXT,
-                fetched_at INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS plays (
-                id        INTEGER PRIMARY KEY,
-                video_id  TEXT NOT NULL,
-                played_at INTEGER NOT NULL,
-                song_json TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS plays_played_at ON plays(played_at);
-            CREATE TABLE IF NOT EXISTS local_tracks (
-                path          TEXT PRIMARY KEY,
-                title         TEXT NOT NULL,
-                artist        TEXT NOT NULL,
-                album         TEXT NOT NULL,
-                album_key     TEXT NOT NULL,
-                track_no      INTEGER NOT NULL,
-                duration_secs INTEGER NOT NULL,
-                cover         TEXT,
-                mtime         INTEGER NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS local_tracks_album ON local_tracks(album_key);
-            "#,
-        )?;
-        // Migrate pre-Phase-4 DBs that predate the loudness_db column. Errors ("duplicate column")
-        // on fresh DBs are expected and ignored — the cache is disposable anyway.
-        let _ = conn.execute("ALTER TABLE stream_url_cache ADD COLUMN loudness_db REAL", []);
+        let settings_table_create = Table::create()
+            .table("settings")
+            .if_not_exists()
+            .col(ColumnDef::new("key").text().primary_key())
+            .col(ColumnDef::new("value").text().not_null())
+            .build(SqliteQueryBuilder);
+
+        let stream_url_cache_create = Table::create()
+            .table("stream_url_cache")
+            .if_not_exists()
+            .col(ColumnDef::new("video_id").text().primary_key())
+            .col(ColumnDef::new("url").text().not_null())
+            .col(ColumnDef::new("itag").integer().not_null())
+            .col(ColumnDef::new("expires_at").integer().not_null())
+            .build(SqliteQueryBuilder);
+
+        let lyrics_cache_create = Table::create()
+            .table("lyrics_cache")
+            .if_not_exists()
+            .col(ColumnDef::new("video_id").text().primary_key())
+            .col(ColumnDef::new("lyrics").text())
+            .col(ColumnDef::new("fetched_at").integer().not_null())
+            .build(SqliteQueryBuilder);
+
+        let plays_create = Table::create()
+            .table("plays")
+            .if_not_exists()
+            .col(ColumnDef::new("id").integer().primary_key())
+            .col(ColumnDef::new("video_id").text().not_null())
+            .col(ColumnDef::new("played_at").integer().not_null())
+            .col(ColumnDef::new("song_json").text().not_null())
+            .build(SqliteQueryBuilder);
+
+        let plays_played_at = Index::create()
+            .if_not_exists()
+            .name("plays_played_at")
+            .table("plays")
+            .col("played_at")
+            .build(SqliteQueryBuilder);
+
+        let local_tracks_create = Table::create()
+            .table("local_tracks")
+            .if_not_exists()
+            .col(ColumnDef::new("path").text().primary_key())
+            .col(ColumnDef::new("title").text().not_null())
+            .col(ColumnDef::new("artist").text().not_null())
+            .col(ColumnDef::new("album").text().not_null())
+            .col(ColumnDef::new("album_key").text().not_null())
+            .col(ColumnDef::new("track_no").integer().not_null())
+            .col(ColumnDef::new("duration_secs").integer().not_null())
+            .col(ColumnDef::new("cover").text())
+            .col(ColumnDef::new("mtime").integer().not_null())
+            .build(SqliteQueryBuilder);
+
+        let local_tracks_album = Index::create()
+            .if_not_exists()
+            .name("local_tracks_album")
+            .table("local_tracks")
+            .col("album_key")
+            .build(SqliteQueryBuilder);
+
+        let add_loudness_db = Table::alter()
+            .table("stream_url_cache")
+            .add_column(ColumnDef::new("loudness_db").float())
+            .build(SqliteQueryBuilder);
+
+        conn.query_row("PRAGMA journal_mode=WAL", [], |r| r.get::<_, String>(0))?;
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
+
+        let sql = [
+            settings_table_create,
+            stream_url_cache_create,
+            lyrics_cache_create,
+            plays_create,
+            plays_played_at,
+            local_tracks_create,
+            local_tracks_album,
+        ]
+        .join(";\n");
+
+        conn.execute_batch(&sql)?;
+
+        // Migrate pre-Phase-4 DBs that predate the loudness_db column.
+        // Errors ("duplicate column") on fresh/current DBs are intentionally ignored.
+        let _ = conn.execute(&add_loudness_db, []);
+
         // Local files are no longer recorded as plays (see `AppState::on_position`), but 0.3.1
         // recorded them for a while, so clear out anything already sitting in On Repeat's table.
-        let _ = conn.execute("DELETE FROM plays WHERE video_id LIKE 'LOCAL:%'", []);
-        // Sweep dead stream URLs here as well as on write. `put_stream` only runs on a cache miss,
-        // so a session spent replaying cached tracks never triggers one, and the backlog that
-        // built up before anything pruned at all (1803 rows, 1772 of them expired, on a real
-        // install) would sit there until it happened to.
-        let _ = conn.execute("DELETE FROM stream_url_cache WHERE expires_at <= ?1", [now_secs()]);
+        conn.execute("DELETE FROM plays WHERE video_id LIKE 'LOCAL:%'", [])?;
+
+        // Sweep dead stream URLs here as well as on write.
+        conn.execute("DELETE FROM stream_url_cache WHERE expires_at <= ?1", [now_secs()])?;
         Ok(Db(Mutex::new(conn)))
     }
 
@@ -93,16 +134,20 @@ impl Db {
 
     pub fn get_setting(&self, key: &str) -> Option<String> {
         let conn = self.0.lock().unwrap();
+
         conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).ok()
     }
 
     pub fn set_setting(&self, key: &str, value: &str) {
         let conn = self.0.lock().unwrap();
-        let _ = conn.execute(
-            "INSERT INTO settings(key, value) VALUES(?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            [key, value],
-        );
+        let (sql, _) = Query::insert()
+            .into_table("settings")
+            .columns(["key", "value"])
+            .values_panic([key.into(), value.into()])
+            .on_conflict(OnConflict::column("key").update_column("value").to_owned())
+            .build(SqliteQueryBuilder);
+
+        let _ = conn.execute(&sql, []);
     }
 
     pub fn delete_setting(&self, key: &str) {
